@@ -1,0 +1,7 @@
+app_id=APPCX002001
+app_name=splitunnel
+app_cname="Split Tunnel Test"
+app_version=20250311.001
+app_desc="Split Tunnel Routing Test - Test and verify routing policies"
+app_width=1400
+app_height=750

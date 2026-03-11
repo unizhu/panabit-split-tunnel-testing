@@ -1,0 +1,81 @@
+#!/bin/sh
+
+. /etc/PG.conf
+
+#SYS ENV
+RAMDISK=/usr/ramdisk/
+WEBROOT=${RAMDISK}/admin
+FLOWEYE=${RAMDISK}/bin/floweye
+
+#APP ENV
+APPNAME=splitunnel
+APPROOT=${PGPATH}/app/${APPNAME}
+
+HTMLDIR=${WEBROOT}/html/App/${APPNAME}
+CGIDIR=${WEBROOT}/cgi-bin/App/${APPNAME}
+TMPWEBDIR=${RAMDISK}/app/${APPNAME}/web/
+BINDIR=${RAMDISK}/bin
+
+
+app_status()
+{
+	echo "enable"
+}
+
+
+app_start()
+{
+    mkdir -p ${CGIDIR}
+	mkdir -p ${HTMLDIR}
+
+	# Copy and setup jq if not exists
+	if [ ! -x /usr/bin/jq ]; then
+		cp -f ${APPROOT}/bin/jq /usr/bin/jq 2>/dev/null
+		chmod +x /usr/bin/jq 2>/dev/null
+	fi
+	if [ ! -x ${BINDIR}/jq ]; then
+		cp -f ${APPROOT}/bin/jq ${BINDIR}/jq 2>/dev/null
+		chmod +x ${BINDIR}/jq 2>/dev/null
+	fi
+
+	chmod +x ${APPROOT}/web/cgi/*
+
+	cp -Rf ${APPROOT}/web/cgi/* ${CGIDIR}
+	cp -Rf ${APPROOT}/web/html/* ${HTMLDIR}/
+
+	[ -d ${TMPWEBDIR} ] && rm -rf ${TMPWEBDIR}
+
+	echo "Split Tunnel addon started successfully"
+}
+
+
+app_stop()
+{
+	echo "Split Tunnel addon stopped"
+}
+
+
+app_enable()
+{
+	echo "Split Tunnel addon enabled"
+}
+
+
+case "$1" in
+	status)
+		app_status
+		;;
+	start)
+		app_start
+		;;
+	stop)
+		app_stop
+		;;
+	enable)
+		app_enable
+		;;
+	*)
+		echo "Usage: $0 {status|start|stop|enable}"
+		exit 1
+		;;
+esac

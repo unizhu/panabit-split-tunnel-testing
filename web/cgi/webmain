@@ -1,0 +1,7 @@
+#!/bin/sh
+
+export CGI_pop_title="Split Tunnel Test"
+export CGI_pop_route="App/splitunnel/splitunnel_main"
+
+cd /usr/ramdisk/admin/cgi-bin/common
+sh popup
