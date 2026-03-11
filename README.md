@@ -10,22 +10,25 @@ Split Tunnel Test is a comprehensive addon for Panabit that allows you to test a
 - Debugging routing issues
 - Monitoring multi-WAN setups
 
+## Screenshot
+
+![screenshot](static/screenshot.png)
+
 ## Features
 
 ### Core Features
-- ✅ **Multi-endpoint testing**: Tests 10 different endpoints simultaneously
-- ✅ **IP address detection**: Shows the IP address used for each request
-- ✅ **Geolocation info**: Displays country, city, and ISP information
-- ✅ **Routing diagnostics**: Shows system routing information
-- ✅ **DNS resolution test**: Tests domain resolution across different paths
-- ✅ **Local IP display**: Shows all local interface IP addresses
+- **Multi-endpoint testing**: Tests 10 different endpoints simultaneously
+- **IP address detection**: Shows the IP address used for each request
+- **Geolocation info**: Displays country, city, and ISP information
+- **Routing diagnostics**: Shows system routing information
+- **DNS resolution test**: Tests domain resolution across different paths
+- **Local IP display**: Shows all local interface IP addresses
 
 ### Advanced Features
-- 🎨 **Modern UI**: Clean, responsive web interface
-- 📊 **Visual comparison**: Highlights IP differences for easy analysis
-- 📝 **Detailed logging**: Logs all tests for troubleshooting
-- ⚡ **Fast testing**: Optimized for quick results
-- 🔧 **Configurable**: Customizable endpoints and timeouts
+- **Modern UI**: Clean, responsive web interface
+- **Visual comparison**: Highlights IP differences for easy analysis
+- **Detailed logging**: Logs all tests for troubleshooting
+- **Fast testing**: Optimized for quick results
 
 ## Installation
 
@@ -111,8 +114,8 @@ LOG_FILE=/usr/panabit/data/split_tunnel/test.log
 
 ### Color Coding
 
-- 🟢 **Green background**: All IPs are the same
-- 🟡 **Yellow background**: IPs differ, split tunneling may be active
+- **Green background**: All IPs are the same
+- **Yellow background**: IPs differ, split tunneling may be active
 
 ### Status Indicators
 
@@ -229,17 +232,13 @@ chmod +x /usr/panabit/app/split_tunnel/bin/*
 
 ## Version History
 
-### v1.0 (2025-03-11)
+### v1.0 (2026-03-11)
 - Initial release
 - Multi-endpoint testing
 - Web interface
 - Command-line tool
 - API endpoints
 
-## Credits
-
-- Test endpoints provided by [Sukka's IP Service](https://ip.skk.moe)
-- Inspired by split tunneling testing tools
 
 ## License
 
@@ -251,11 +250,6 @@ For issues and feature requests, please check:
 - Panabit documentation
 - System logs: `/var/log/messages`
 - Addon logs: `/usr/panabit/data/split_tunnel/test.log`
-
-## Related Documentation
-
-- [ADDON.md](/root/ADDON.md) - Panabit addon development guide
-- [FLOWEYE.md](/root/FLOWEYE.md) - Panabit command reference
 
 ---
 

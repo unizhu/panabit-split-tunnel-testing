@@ -7,16 +7,294 @@ FLOWEYE="/usr/ramdisk/bin/floweye"
 CURL="/usr/pabin/pacu"
 JQ="/usr/bin/jq"
 
-# Test all endpoints - Global CDN with regional detection
-test_all()
+# Get admin IP (MGT interface)
+ADMIN_IP=$(ifconfig MGT 2>/dev/null | grep "inet addr" | awk -F: '{print $2}' | awk '{print $1}')
+[ -z "$ADMIN_IP" ] && ADMIN_IP="192.168.3.200"
+
+# Route ID range for temporary routes (avoid conflicts with existing rules)
+ROUTE_ID_BASE=9000
+DNS_ID_BASE=9000
+
+# Get interface zone (outside=wan/outbound, inside=lan/inbound)
+get_interface_zone()
+{
+    local iface="$1"
+    local zone=$(${FLOWEYE} if list 2>/dev/null | grep "^${iface} " | awk '{print $3}')
+    echo "$zone"
+}
+
+# Test through a specific WAN proxy (with temporary route)
+test_via_proxy()
+{
+    local proxy_name="$1"
+    local test_url="$2"
+    local route_id="${3:-$ROUTE_ID_BASE}"
+    local dns_id="${4:-$DNS_ID_BASE}"
+    
+    # Add temporary route through this proxy
+    ${FLOWEYE} route add id=${route_id} src=${ADMIN_IP} action=nat-${proxy_name} 2>/dev/null
+    ${FLOWEYE} dnspolicy add id=${dns_id} inip=${ADMIN_IP} action=rdr actarg=${proxy_name} 2>/dev/null
+    
+    # Small delay to let route take effect
+    sleep 0.3
+    
+    # Make the request
+    local result=$(${CURL} -s --connect-timeout 5 --max-time 10 "$test_url" 2>/dev/null)
+    
+    # Immediately remove the temporary route
+    ${FLOWEYE} route remove id=${route_id} 2>/dev/null
+    ${FLOWEYE} dnspolicy remove id=${dns_id} 2>/dev/null
+    
+    echo "$result"
+}
+
+# Get list of WAN interfaces (outbound only)
+get_wan_list()
 {
     local dot=""
+    printf "["
+    
+    # Get NAT proxies that are enabled and have outside zone
+    local id=1
+    ${FLOWEYE} nat listproxy type=wan 2>/dev/null | while read line; do
+        local proxy_type=$(echo "$line" | awk '{print $2}')
+        local proxy_name=$(echo "$line" | awk '{print $3}')
+        local proxy_iface=$(echo "$line" | awk '{print $4}')
+        local proxy_ip=$(echo "$line" | awk '{print $5}')
+        local enabled=$(echo "$line" | awk '{print $14}')
+        
+        # Skip disabled interfaces
+        [ "$enabled" = "disable" ] && continue
+        [ -z "$proxy_name" ] && continue
+        
+        # Check zone - only include outside (outbound/WAN) interfaces
+        local zone=$(get_interface_zone "$proxy_iface")
+        [ "$zone" != "outside" ] && continue
+        
+        printf "%s{\"id\":%d,\"name\":\"%s\",\"type\":\"%s\",\"interface\":\"%s\",\"ip\":\"%s\",\"zone\":\"%s\"}" \
+            "$dot" $id "$proxy_name" "$proxy_type" "$proxy_iface" "$proxy_ip" "$zone"
+        dot=","
+        id=$((id + 1))
+    done
+    
+    printf "]"
+}
+
+# Test a single WAN interface
+test_single_wan()
+{
+    local wan_name="$1"
+    local test_url="http://ip-api.com/json/?fields=status,country,city,isp,query"
+    
+    # Find WAN info (column 3 is proxy name)
+    local wan_info=$(${FLOWEYE} nat listproxy type=wan 2>/dev/null | awk -v n="$wan_name" '$3 == n {print; exit}')
+    
+    if [ -z "$wan_info" ]; then
+        printf "{\"name\":\"%s\",\"interface\":\"-\",\"local_ip\":\"-\",\"ip\":\"-\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"failed\"}" "$wan_name"
+        return
+    fi
+    
+    local proxy_iface=$(echo "$wan_info" | awk '{print $4}')
+    local proxy_ip=$(echo "$wan_info" | awk '{print $5}')
+    
+    # Test with temporary route
+    local result=$(test_via_proxy "$wan_name" "$test_url" "$ROUTE_ID_BASE" "$DNS_ID_BASE")
+    
+    local status="failed"
+    local ip="-"
+    local country="-"
+    local city="-"
+    local isp="-"
+    
+    if [ -n "$result" ] && echo "$result" | ${JQ} -e '.status == "success"' >/dev/null 2>&1; then
+        status="success"
+        ip=$(echo "$result" | ${JQ} -r '.query' 2>/dev/null)
+        country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
+        city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
+        isp=$(echo "$result" | ${JQ} -r '.isp' 2>/dev/null)
+    fi
+    
+    printf "{\"name\":\"%s\",\"interface\":\"%s\",\"local_ip\":\"%s\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+        "$wan_name" "$proxy_iface" "$proxy_ip" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+}
+
+# Test a single external service endpoint
+test_single_endpoint()
+{
+    local endpoint_id="$1"
+    local result=""
+    local status="failed"
+    local ip="-"
+    local country="-"
+    local city="-"
+    local isp="-"
+    
+    case "$endpoint_id" in
+        1)
+            # ip-api.com
+            result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json/?fields=status,country,city,isp,query" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | ${JQ} -e '.status == "success"' >/dev/null 2>&1; then
+                status="success"
+                ip=$(echo "$result" | ${JQ} -r '.query' 2>/dev/null)
+                country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
+                city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
+                isp=$(echo "$result" | ${JQ} -r '.isp' 2>/dev/null)
+            fi
+            printf "{\"id\":1,\"name\":\"ip-api.com\",\"region\":\"USA\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+            ;;
+        2)
+            # ipinfo.io
+            result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://ipinfo.io/json" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
+                status="success"
+                ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
+                country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
+                city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
+                isp=$(echo "$result" | ${JQ} -r '.org' 2>/dev/null)
+            fi
+            printf "{\"id\":2,\"name\":\"ipinfo.io\",\"region\":\"USA\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+            ;;
+        3)
+            # ifconfig.me
+            result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://ifconfig.me/ip" 2>/dev/null | tr -d '[:space:]')
+            if [ -n "$result" ] && echo "$result" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+                status="success"; ip="$result"
+            fi
+            printf "{\"id\":3,\"name\":\"ifconfig.me\",\"region\":\"Japan\",\"ip\":\"%s\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "$status"
+            ;;
+        4)
+            # ip.sb
+            result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.ip.sb/jsonip" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
+                status="success"
+                ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
+            fi
+            printf "{\"id\":4,\"name\":\"ip.sb\",\"region\":\"Global\",\"ip\":\"%s\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "$status"
+            ;;
+        5)
+            # ipify.org
+            result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.ipify.org?format=json" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
+                status="success"
+                ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
+            fi
+            printf "{\"id\":5,\"name\":\"ipify.org\",\"region\":\"USA\",\"ip\":\"%s\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "$status"
+            ;;
+        6)
+            # CF 1.1.1.1
+            result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://1.1.1.1/cdn-cgi/trace" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | grep -q "^ip="; then
+                status="success"
+                ip=$(echo "$result" | grep "^ip=" | cut -d= -f2)
+                local loc=$(echo "$result" | grep "^loc=" | cut -d= -f2)
+                local colo=$(echo "$result" | grep "^colo=" | cut -d= -f2)
+                country="$loc"; city="$colo"; isp="Cloudflare"
+            fi
+            printf "{\"id\":6,\"name\":\"CF-1.1.1.1\",\"region\":\"Global\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+            ;;
+        7)
+            # CF API
+            result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.cloudflare.com/cdn-cgi/trace" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | grep -q "^ip="; then
+                status="success"
+                ip=$(echo "$result" | grep "^ip=" | cut -d= -f2)
+                loc=$(echo "$result" | grep "^loc=" | cut -d= -f2)
+                colo=$(echo "$result" | grep "^colo=" | cut -d= -f2)
+                country="$loc"; city="$colo"; isp="Cloudflare"
+            fi
+            printf "{\"id\":7,\"name\":\"CF-API\",\"region\":\"HK/US\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+            ;;
+        8)
+            # ipwho.is
+            result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://ipwho.is" 2>/dev/null)
+            if [ -n "$result" ] && echo "$result" | ${JQ} -e '.success' >/dev/null 2>&1; then
+                status="success"
+                ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
+                country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
+                city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
+                isp=$(echo "$result" | ${JQ} -r '.connection.isp' 2>/dev/null)
+            fi
+            printf "{\"id\":8,\"name\":\"ipwho.is\",\"region\":\"Global\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+                "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+            ;;
+        *)
+            printf "{\"id\":0,\"name\":\"unknown\",\"region\":\"-\",\"ip\":\"-\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"failed\"}"
+            ;;
+    esac
+}
+
+# Test all WAN interfaces with temporary routing
+test_wan_routing()
+{
+    local dot=""
+    local test_url="http://ip-api.com/json/?fields=status,country,city,isp,query"
+    local id=1
     
     printf "["
     
-    # ===== IP DETECTION SERVICES =====
+    # Get WAN list
+    local wan_list=$(${FLOWEYE} nat listproxy type=wan 2>/dev/null)
     
-    # 1: ip-api.com (HTTP, USA)
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        
+        local proxy_type=$(echo "$line" | awk '{print $2}')
+        local proxy_name=$(echo "$line" | awk '{print $3}')
+        local proxy_iface=$(echo "$line" | awk '{print $4}')
+        local proxy_ip=$(echo "$line" | awk '{print $5}')
+        local enabled=$(echo "$line" | awk '{print $14}')
+        
+        # Skip disabled interfaces
+        [ "$enabled" = "disable" ] && continue
+        [ -z "$proxy_name" ] && continue
+        
+        # Use unique route ID for each test to avoid conflicts
+        local route_id=$((ROUTE_ID_BASE + id))
+        local dns_id=$((DNS_ID_BASE + id))
+        
+        # Test through this proxy with temporary route
+        local result=$(test_via_proxy "$proxy_name" "$test_url" "$route_id" "$dns_id")
+        
+        local status="failed"
+        local ip="-"
+        local country="-"
+        local city="-"
+        local isp="-"
+        
+        if [ -n "$result" ] && echo "$result" | ${JQ} -e '.status == "success"' >/dev/null 2>&1; then
+            status="success"
+            ip=$(echo "$result" | ${JQ} -r '.query' 2>/dev/null)
+            country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
+            city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
+            isp=$(echo "$result" | ${JQ} -r '.isp' 2>/dev/null)
+        fi
+        
+        printf "%s{\"id\":%d,\"name\":\"%s\",\"interface\":\"%s\",\"local_ip\":\"%s\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
+            "$dot" $id "$proxy_name" "$proxy_iface" "$proxy_ip" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
+        dot=","
+        id=$((id + 1))
+        
+    done <<EOF
+$wan_list
+EOF
+    
+    printf "]"
+}
+
+# Test using default routing (no route changes)
+test_default_route()
+{
+    local dot=""
+    printf "["
+    
+    # Test 1: ip-api.com
     local result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json/?fields=status,country,city,isp,query" 2>/dev/null)
     local status="failed" ip="-" country="-" city="-" isp="-"
     if [ -n "$result" ] && echo "$result" | ${JQ} -e '.status == "success"' >/dev/null 2>&1; then
@@ -30,7 +308,7 @@ test_all()
         "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
     dot=","
     
-    # 2: ipinfo.io (HTTP, USA)
+    # Test 2: ipinfo.io
     result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://ipinfo.io/json" 2>/dev/null)
     status="failed"; ip="-"; country="-"; city="-"; isp="-"
     if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
@@ -44,7 +322,7 @@ test_all()
         "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
     dot=","
     
-    # 3: ifconfig.me (HTTP, Japan)
+    # Test 3: ifconfig.me
     result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://ifconfig.me/ip" 2>/dev/null | tr -d '[:space:]')
     status="failed"; ip="-"
     if [ -n "$result" ] && echo "$result" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
@@ -54,7 +332,7 @@ test_all()
         "$dot" "${ip:-"-"}" "$status"
     dot=","
     
-    # 4: ip.sb (HTTPS, Global CDN)
+    # Test 4: ip.sb
     result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.ip.sb/jsonip" 2>/dev/null)
     status="failed"; ip="-"
     if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
@@ -65,7 +343,7 @@ test_all()
         "$dot" "${ip:-"-"}" "$status"
     dot=","
     
-    # 5: ipify.org (HTTPS, USA)
+    # Test 5: ipify.org
     result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.ipify.org?format=json" 2>/dev/null)
     status="failed"; ip="-"
     if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
@@ -76,40 +354,38 @@ test_all()
         "$dot" "${ip:-"-"}" "$status"
     dot=","
     
-    # ===== CLOUDFLARE TRACE ENDPOINTS (Shows routing colo) =====
-    
-    # 6: Cloudflare DNS 1.1.1.1 - Global
+    # Test 6: Cloudflare 1.1.1.1
     result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://1.1.1.1/cdn-cgi/trace" 2>/dev/null)
     status="failed"; ip="-"; country="-"; city="-"; isp="-"
     if [ -n "$result" ] && echo "$result" | grep -q "^ip="; then
         status="success"
         ip=$(echo "$result" | grep "^ip=" | cut -d= -f2)
-        local colo=$(echo "$result" | grep "^colo=" | cut -d= -f2)
         local loc=$(echo "$result" | grep "^loc=" | cut -d= -f2)
+        local colo=$(echo "$result" | grep "^colo=" | cut -d= -f2)
         country="$loc"; city="$colo"; isp="Cloudflare"
     fi
     printf "%s{\"id\":6,\"name\":\"CF-1.1.1.1\",\"region\":\"Global\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
         "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
     dot=","
     
-    # 7: Cloudflare API (may route via HKG - Hong Kong)
+    # Test 7: Cloudflare API
     result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.cloudflare.com/cdn-cgi/trace" 2>/dev/null)
     status="failed"; ip="-"; country="-"; city="-"; isp="-"
     if [ -n "$result" ] && echo "$result" | grep -q "^ip="; then
         status="success"
         ip=$(echo "$result" | grep "^ip=" | cut -d= -f2)
-        colo=$(echo "$result" | grep "^colo=" | cut -d= -f2)
         loc=$(echo "$result" | grep "^loc=" | cut -d= -f2)
+        colo=$(echo "$result" | grep "^colo=" | cut -d= -f2)
         country="$loc"; city="$colo"; isp="Cloudflare"
     fi
     printf "%s{\"id\":7,\"name\":\"CF-API\",\"region\":\"HK/US\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
         "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
     dot=","
     
-    # 8: ipwho.is (HTTPS, Global)
-    result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://ipwho.is/" 2>/dev/null)
+    # Test 8: ipwho.is
+    result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://ipwho.is" 2>/dev/null)
     status="failed"; ip="-"; country="-"; city="-"; isp="-"
-    if [ -n "$result" ] && echo "$result" | ${JQ} -e '.success == true' >/dev/null 2>&1; then
+    if [ -n "$result" ] && echo "$result" | ${JQ} -e '.success' >/dev/null 2>&1; then
         status="success"
         ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
         country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
@@ -118,63 +394,42 @@ test_all()
     fi
     printf "%s{\"id\":8,\"name\":\"ipwho.is\",\"region\":\"Global\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
         "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
-    dot=","
-    
-    # 9: ipapi.co (HTTPS, Europe)
-    result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://ipapi.co/json/" 2>/dev/null)
-    status="failed"; ip="-"; country="-"; city="-"; isp="-"
-    if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ip' >/dev/null 2>&1; then
-        status="success"
-        ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
-        country=$(echo "$result" | ${JQ} -r '.country_name' 2>/dev/null)
-        city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
-        isp=$(echo "$result" | ${JQ} -r '.asn' 2>/dev/null)
-    fi
-    printf "%s{\"id\":9,\"name\":\"ipapi.co\",\"region\":\"Europe\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
-        "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
-    dot=","
-    
-    # 10: icanhazip.com (HTTP, Global)
-    result=$(${CURL} -s --connect-timeout 5 --max-time 10 "http://icanhazip.com" 2>/dev/null | tr -d '[:space:]')
-    status="failed"; ip="-"
-    if [ -n "$result" ] && echo "$result" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
-        status="success"; ip="$result"
-    fi
-    printf "%s{\"id\":10,\"name\":\"icanhazip\",\"region\":\"Global\",\"ip\":\"%s\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"%s\"}" \
-        "$dot" "${ip:-"-"}" "$status"
-    dot=","
-    
-    # 11: ipwhois.app (HTTPS, Europe)
-    result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://ipwhois.app/json/" 2>/dev/null)
-    status="failed"; ip="-"; country="-"; city="-"; isp="-"
-    if [ -n "$result" ] && echo "$result" | ${JQ} -e '.success == true' >/dev/null 2>&1; then
-        status="success"
-        ip=$(echo "$result" | ${JQ} -r '.ip' 2>/dev/null)
-        country=$(echo "$result" | ${JQ} -r '.country' 2>/dev/null)
-        city=$(echo "$result" | ${JQ} -r '.city' 2>/dev/null)
-        isp=$(echo "$result" | ${JQ} -r '.isp' 2>/dev/null)
-    fi
-    printf "%s{\"id\":11,\"name\":\"ipwhois.app\",\"region\":\"Europe\",\"ip\":\"%s\",\"country\":\"%s\",\"city\":\"%s\",\"isp\":\"%s\",\"status\":\"%s\"}" \
-        "$dot" "${ip:-"-"}" "${country:-"-"}" "${city:-"-"}" "${isp:-"-"}" "$status"
-    dot=","
-    
-    # 12: bigdatacloud (HTTPS, Singapore/Asia)
-    result=$(${CURL} -s -k --connect-timeout 5 --max-time 10 "https://api.bigdatacloud.net/data/client-ip" 2>/dev/null)
-    status="failed"; ip="-"
-    if [ -n "$result" ] && echo "$result" | ${JQ} -e '.ipString' >/dev/null 2>&1; then
-        status="success"
-        ip=$(echo "$result" | ${JQ} -r '.ipString' 2>/dev/null)
-    fi
-    printf "%s{\"id\":12,\"name\":\"bigdatacloud\",\"region\":\"Singapore\",\"ip\":\"%s\",\"country\":\"-\",\"city\":\"-\",\"isp\":\"-\",\"status\":\"%s\"}" \
-        "$dot" "${ip:-"-"}" "$status"
     
     printf "]"
 }
 
+# Cleanup any leftover routes (safety measure)
+cleanup_routes()
+{
+    local i=1
+    while [ $i -lt 100 ]; do
+        ${FLOWEYE} route remove id=$((ROUTE_ID_BASE + i)) 2>/dev/null
+        ${FLOWEYE} dnspolicy remove id=$((DNS_ID_BASE + i)) 2>/dev/null
+        i=$((i + 1))
+    done
+}
+
 # Main dispatcher
 case "${CGI_action}" in
-    "test_all")
-        retjson 0 "OK" "$(test_all)"
+    "get_wan_list")
+        retjson 0 "OK" "$(get_wan_list)"
+        ;;
+    "test_single_wan")
+        retjson 0 "OK" "$(test_single_wan "${CGI_wan_name}")"
+        ;;
+    "test_single")
+        retjson 0 "OK" "$(test_single_endpoint "${CGI_endpoint_id}")"
+        ;;
+    "test_wan")
+        cleanup_routes
+        retjson 0 "OK" "$(test_wan_routing)"
+        ;;
+    "test_default")
+        retjson 0 "OK" "$(test_default_route)"
+        ;;
+    "cleanup")
+        cleanup_routes
+        retjson 0 "Routes cleaned"
         ;;
     *)
         retjson 1 "Unknown action"

@@ -1,202 +1,215 @@
-{{#
-var lang001 = {"ch": "Split Tunnel Test", "en": "Split Tunnel Test"},
-lang002 = {"ch": "Test outbound IP routing through different regions", "en": "Test outbound IP routing through different regions"},
-lang003 = {"ch": "Start Test", "en": "Start Test"},
-lang004 = {"ch": "Endpoint", "en": "Endpoint"},
-lang005 = {"ch": "Region", "en": "Region"},
-lang006 = {"ch": "IP", "en": "IP"},
-lang007 = {"ch": "Country", "en": "Country"},
-lang008 = {"ch": "City/Colo", "en": "City/Colo"},
-lang009 = {"ch": "ISP", "en": "ISP"},
-lang010 = {"ch": "Status", "en": "Status"},
-lang013 = {"ch": "Different IPs indicate split tunneling. City shows Cloudflare colo (HKG=Hong Kong, LAX=LA, FRA=Frankfurt, SIN=Singapore, NRT=Tokyo)", "en": "Different IPs indicate split tunneling. City shows Cloudflare colo (HKG=Hong Kong, LAX=LA, FRA=Frankfurt, SIN=Singapore, NRT=Tokyo)"};
-}}
+{{# var lang001 = {"ch": "Split Tunnel Test", "en": "Split Tunnel Test"}, lang002 = {"ch": "Test outbound IP routing", "en": "Test outbound IP routing"}, lang003 = {"ch": "Start Test", "en": "Start Test"}, lang004 = {"ch": "Endpoint", "en": "Endpoint"}, lang005 = {"ch": "Interface", "en": "Interface"}, lang006 = {"ch": "IP", "en": "IP"}, lang007 = {"ch": "Country", "en": "Country"}, lang008 = {"ch": "City", "en": "City"}, lang009 = {"ch": "ISP", "en": "ISP"}, lang010 = {"ch": "Status", "en": "Status"}, lang011 = {"ch": "Test Mode", "en": "Test Mode"}, lang012 = {"ch": "Default Routing", "en": "Default Routing"}, lang013 = {"ch": "Per-WAN Testing", "en": "Per-WAN Testing"}, lang014 = {"ch": "WAN + External", "en": "WAN + External"}, lang015 = {"ch": "Outbound (WAN)", "en": "Outbound (WAN)"}, lang016 = {"ch": "External Services", "en": "External Services"}, lang017 = {"ch": "Safe: routes are temporary", "en": "Safe: routes are temporary"}, lang018 = {"ch": "Local IP", "en": "Local IP"}, lang019 = {"ch": "Region", "en": "Region"}; }}
 
 <style>
-.st-container {
-    padding: 15px;
-}
-.st-header {
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #e6e6e6;
-}
-.st-header h2 {
-    margin: 0 0 5px 0;
-    font-size: 16px;
-}
-.st-header p {
-    margin: 0;
-    color: #999;
-    font-size: 12px;
-}
-.st-btn-area {
-    margin-bottom: 10px;
-}
-.st-table-wrap {
-    background: #fff;
-}
-.st-success {
-    color: #16b777;
-    font-weight: bold;
-}
-.st-failed {
-    color: #ff5722;
-    font-weight: bold;
-}
-.st-testing {
-    color: #1e9fff;
-}
-.st-note {
-    margin-top: 10px;
-    padding: 8px;
-    background: #fffbe6;
-    border: 1px solid #ffe58f;
-    border-radius: 4px;
-    font-size: 11px;
-    color: #d48806;
-}
-.st-diff {
-    background-color: #fff1f0;
-}
+.st-container{padding:15px;}
+.st-header{margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #e6e6e6;}
+.st-header h2{margin:0 0 5px 0;font-size:16px;}
+.st-header p{margin:0;color:#999;font-size:12px;}
+.st-controls{display:flex;align-items:center;gap:15px;margin-bottom:15px;padding:10px;background:#f8f8f8;border-radius:4px;flex-wrap:wrap;}
+.st-mode-select{display:flex;align-items:center;gap:8px;}
+.st-mode-select label{font-size:12px;font-weight:500;color:#666;}
+.st-mode-select select{padding:5px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;background:#fff;min-width:150px;}
+.st-btn-area{display:flex;align-items:center;gap:10px;}
+.st-success{color:#16b777;font-weight:bold;}
+.st-failed{color:#ff5722;font-weight:bold;}
+.st-testing{color:#1e9fff;}
+.st-note{margin-bottom:15px;padding:8px 12px;background:#e6f7ff;border:1px solid #91d5ff;border-radius:4px;font-size:12px;color:#0050b3;}
+.st-note-safe{margin-bottom:15px;padding:8px 12px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:4px;font-size:12px;color:#389e0d;}
+.st-wan-section{margin-bottom:20px;}
+.st-section-title{font-size:13px;font-weight:600;color:#333;margin-bottom:8px;padding:6px 12px;background:#f5f5f5;border-left:3px solid #1e9fff;border-radius:2px;}
+.st-section-title.outbound{border-left-color:#ff5722;}
+.st-section-title.services{border-left-color:#52c41a;}
+.st-local-ip{color:#999;font-size:10px;}
+.st-progress{margin-bottom:15px;padding:8px 12px;background:#fffbe6;border:1px solid #ffe58f;border-radius:4px;font-size:12px;color:#d48806;}
+.st-footer{margin-top:20px;padding-top:15px;border-top:1px solid #e6e6e6;text-align:center;font-size:12px;color:#999;}
+.layui-table-view{margin:0;}
 </style>
 
 <div class="st-container">
-    <div class="st-header">
-        <h2>{{ lang001[g_lang] || "Split Tunnel Test" }}</h2>
-        <p>{{ lang002[g_lang] }}</p>
-    </div>
-    
-    <div class="st-btn-area">
-        <button class="layui-btn layui-btn-normal layui-btn-sm" id="btnTest">
-            <i class="layui-icon layui-icon-play"></i> {{ lang003[g_lang] }}
-        </button>
-        <span id="ipInfo" style="margin-left: 15px; font-size: 12px; color: #666;"></span>
-    </div>
-    
-    <div class="st-table-wrap">
-        <table id="testTable" lay-filter="testTable"></table>
-    </div>
-    
-    <div class="st-note">
-        <i class="layui-icon layui-icon-tips"></i> {{ lang013[g_lang] }}
-    </div>
-    
-    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e6e6e6; text-align: center; font-size: 12px; color: #999;">
-        <a href="https://github.com/unizhu/panabit-split-tunnel-testing" target="_blank" style="color: #1e9fff;">
-            <i class="layui-icon layui-icon-github" style="font-size: 14px;"></i> GitHub: unizhu/panabit-split-tunnel-testing
-        </a>
-    </div>
+<div class="st-header">
+<h2><i class="layui-icon layui-icon-share" style="margin-right:8px;"></i>{{ lang001[g_lang] || "Split Tunnel Test" }}</h2>
+<p>{{ lang002[g_lang] }}</p>
+</div>
+<div class="st-controls">
+<div class="st-mode-select">
+<label>{{ lang011[g_lang] || "Test Mode" }}:</label>
+<select id="testMode">
+<option value="default">{{ lang012[g_lang] || "Default Routing" }}</option>
+<option value="wan">{{ lang013[g_lang] || "Per-WAN Testing" }}</option>
+<option value="all">{{ lang014[g_lang] || "WAN + External" }}</option>
+</select>
+</div>
+<div class="st-btn-area">
+<button class="layui-btn layui-btn-normal layui-btn-sm" id="btnTest"><i class="layui-icon layui-icon-play"></i> {{ lang003[g_lang] }}</button>
+<span id="ipInfo"></span>
+</div>
+</div>
+<div id="modeDesc" class="st-note"><i class="layui-icon layui-icon-tips"></i> <span id="modeDescText">{{ lang012[g_lang] || "Default Routing" }}</span></div>
+<div id="safeNote" class="st-note-safe" style="display:none;"><i class="layui-icon layui-icon-ok-circle"></i> {{ lang017[g_lang] }}</div>
+<div id="progressInfo" class="st-progress" style="display:none;"><i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i> <span id="progressText">Testing...</span></div>
+<div id="wanSection" class="st-wan-section" style="display:none;"><div class="st-section-title outbound">{{ lang015[g_lang] || "Outbound (WAN)" }}</div><table id="wanTable" lay-filter="wanTable"></table></div>
+<div id="serviceSection" style="display:none;"><div class="st-section-title services">{{ lang016[g_lang] || "External Services" }}</div><table id="testTable" lay-filter="testTable"></table></div>
+<div class="st-footer"><a href="https://github.com/unizhu/panabit-split-tunnel-testing" target="_blank" style="color:#1e9fff;"><i class="layui-icon layui-icon-github" style="font-size:14px;"></i> GitHub</a></div>
 </div>
 
-<script type="text/html" id="statusTpl">
-{{# if(d.status === 'success'){ }}
-    <span class="st-success">OK</span>
-{{# } else if(d.status === 'failed'){ }}
-    <span class="st-failed">FAIL</span>
-{{# } else if(d.status === 'testing'){ }}
-    <span class="st-testing">...</span>
-{{# } else { }}
-    <span style="color:#999">-</span>
-{{# } }}
-</script>
-
 <script>
-layui.use(['table', 'layer'], function(){
-    var table = layui.table;
-    var layer = layui.layer;
-    var $ = layui.$;
-    
-    var colEndpoint = '{{ lang004[g_lang] || "Endpoint" }}';
-    var colRegion = '{{ lang005[g_lang] || "Region" }}';
-    var colIP = '{{ lang006[g_lang] || "IP" }}';
-    var colCountry = '{{ lang007[g_lang] || "Country" }}';
-    var colCity = '{{ lang008[g_lang] || "City/Colo" }}';
-    var colISP = '{{ lang009[g_lang] || "ISP" }}';
-    var colStatus = '{{ lang010[g_lang] || "Status" }}';
-    var txtStart = '{{ lang003[g_lang] || "Start Test" }}';
+layui.use(["table","layer"],function(){
+var table=layui.table;
+var layer=layui.layer;
+var $=layui.$;
 
-    table.render({
-        elem: '#testTable',
-        cols: [[
-            {field: 'id', title: '#', width: 25},
-            {field: 'name', title: colEndpoint, width: 100},
-            {field: 'region', title: colRegion, width: 70},
-            {field: 'ip', title: colIP, width: 125},
-            {field: 'country', title: colCountry, width: 70},
-            {field: 'city', title: colCity, width: 70},
-            {field: 'isp', title: colISP, width: 120},
-            {field: 'status', title: colStatus, width: 40, templet: '#statusTpl'}
-        ]],
-        data: [],
-        page: false,
-        limit: 20
-    });
+var colEndpoint="{{ lang004[g_lang] || 'Endpoint' }}";
+var colLocalIP="{{ lang018[g_lang] || 'Local IP' }}";
+var colRegion="{{ lang019[g_lang] || 'Region' }}";
+var colIP="{{ lang006[g_lang] || 'IP' }}";
+var colCountry="{{ lang007[g_lang] || 'Country' }}";
+var colCity="{{ lang008[g_lang] || 'City' }}";
+var colISP="{{ lang009[g_lang] || 'ISP' }}";
+var colStatus="{{ lang010[g_lang] || 'Status' }}";
+var txtStart="{{ lang003[g_lang] || 'Start Test' }}";
 
-    function getUniqueIPs(data) {
-        var ips = {};
-        data.forEach(function(item) {
-            if(item.ip && item.ip !== '-' && item.status === 'success') {
-                ips[item.ip] = (ips[item.ip] || 0) + 1;
-            }
-        });
-        return Object.keys(ips);
-    }
+var modeDescs={'default':'{{ lang012[g_lang] || "Default Routing" }}','wan':'{{ lang013[g_lang] || "Per-WAN Testing" }}','all':'{{ lang014[g_lang] || "WAN + External" }}'};
 
-    $('#btnTest').on('click', function(){
-        var btn = $(this);
-        btn.prop('disabled', true).addClass('layui-btn-disabled');
-        btn.html('<i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i> Testing...');
-        $('#ipInfo').text('');
+var testRunning=false;
+var wanTableData=[];
+var serviceTableData=[];
 
-        var testData = [
-            {id:1,name:'ip-api.com',region:'USA',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:2,name:'ipinfo.io',region:'USA',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:3,name:'ifconfig.me',region:'Japan',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:4,name:'ip.sb',region:'Global',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:5,name:'ipify.org',region:'USA',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:6,name:'CF-1.1.1.1',region:'Global',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:7,name:'CF-API',region:'HK/US',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:8,name:'ipwho.is',region:'Global',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:9,name:'ipapi.co',region:'Europe',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:10,name:'icanhazip',region:'Global',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:11,name:'ipwhois.app',region:'Europe',ip:'-',country:'-',city:'-',isp:'-',status:'testing'},
-            {id:12,name:'bigdatacloud',region:'Singapore',ip:'-',country:'-',city:'-',isp:'-',status:'testing'}
-        ];
-        table.reload('testTable', {data: testData});
+function renderStatus(status){
+if(status==="success"){return '<span class="st-success">OK</span>';}
+else if(status==="failed"){return '<span class="st-failed">FAIL</span>';}
+else if(status==="testing"){return '<span class="st-testing">...</span>';}
+return '<span style="color:#999">-</span>';
+}
 
-        $.ajax({
-            url: '/cgi-bin/App/splitunnel/ajax_splitunnel',
-            type: 'POST',
-            data: {action: 'test_all'},
-            dataType: 'json',
-            timeout: 120000,
-            success: function(res){
-                console.log('Response:', res);
-                if(res.code === 0 && res.data){
-                    table.reload('testTable', {data: res.data});
-                    
-                    var uniqueIPs = getUniqueIPs(res.data);
-                    if(uniqueIPs.length > 1) {
-                        $('#ipInfo').html('<span style="color:#ff5722;font-weight:bold;">Multiple IPs detected: ' + uniqueIPs.join(', ') + ' (Split tunneling active)</span>');
-                    } else if(uniqueIPs.length === 1) {
-                        $('#ipInfo').html('<span style="color:#16b777;">Single IP: ' + uniqueIPs[0] + '</span>');
-                    } else {
-                        $('#ipInfo').text('No valid results');
-                    }
-                } else {
-                    layer.msg(res.msg || 'Test failed');
-                }
-            },
-            error: function(xhr, status, err){
-                console.error('AJAX Error:', status, err);
-                layer.msg('Request failed: ' + status);
-            },
-            complete: function(){
-                btn.prop('disabled', false).removeClass('layui-btn-disabled');
-                btn.html('<i class="layui-icon layui-icon-play"></i> ' + txtStart);
-            }
-        });
-    });
+function renderInterface(name,iface){
+if(iface){return name+'<br><span class="st-local-ip">via '+iface+'</span>';}
+return name;
+}
+
+table.render({elem:"#wanTable",cols:[[{field:"id",title:"#",width:40,align:"center"},{field:"name",title:colEndpoint,minWidth:120,templet:function(d){return renderInterface(d.name,d.interface);}},{field:"local_ip",title:colLocalIP,width:100},{field:"ip",title:colIP,minWidth:100},{field:"country",title:colCountry,width:80},{field:"city",title:colCity,width:70},{field:"isp",title:colISP,minWidth:100},{field:"status",title:colStatus,width:60,align:"center",templet:function(d){return renderStatus(d.status);}}]],data:[],page:false,limit:20});
+
+table.render({elem:"#testTable",cols:[[{field:"id",title:"#",width:40,align:"center"},{field:"name",title:colEndpoint,minWidth:120},{field:"region",title:colRegion,width:80},{field:"ip",title:colIP,minWidth:100},{field:"country",title:colCountry,width:80},{field:"city",title:colCity,width:70},{field:"isp",title:colISP,minWidth:100},{field:"status",title:colStatus,width:60,align:"center",templet:function(d){return renderStatus(d.status);}}]],data:[],page:false,limit:20});
+
+$("#testMode").on("change",function(){
+var mode=$(this).val();
+$("#modeDescText").text(modeDescs[mode]||mode);
+if(mode==="wan"||mode==="all"){$("#safeNote").show();}else{$("#safeNote").hide();}
+if(mode==="default"){$("#wanSection").hide();$("#serviceSection").show();}
+else if(mode==="wan"){$("#wanSection").show();$("#serviceSection").hide();}
+else{$("#wanSection").show();$("#serviceSection").show();}
+wanTableData=[];
+serviceTableData=[];
+table.reload("wanTable",{data:[]});
+table.reload("testTable",{data:[]});
+$("#ipInfo").html("");
+});
+
+function getUniqueIPs(data){
+var ips={};
+for(var i=0;i<data.length;i++){
+var item=data[i];
+if(item.ip&&item.ip!=="-"&&item.status==="success"){ips[item.ip]=true;}
+}
+return Object.keys(ips);
+}
+
+function updateProgress(current,total,name){
+$("#progressText").text("Testing "+current+"/"+total+": "+name);
+}
+
+function updateIPInfo(){
+var allData=wanTableData.concat(serviceTableData);
+var uniqueIPs=getUniqueIPs(allData);
+if(uniqueIPs.length>1){$("#ipInfo").html('<span style="color:#ff5722;font-weight:bold;">Multiple IPs: '+uniqueIPs.length+"</span>");}
+else if(uniqueIPs.length===1){$("#ipInfo").html('<span style="color:#16b777;font-weight:bold;">IP: '+uniqueIPs[0]+"</span>");}
+else{$("#ipInfo").html("");}
+}
+
+function testSingleEndpoint(index,endpoint){
+return new Promise(function(resolve){
+updateProgress(index+1,serviceTableData.length,endpoint.name);
+$.ajax({url:"/cgi-bin/App/splitunnel/ajax_splitunnel",type:"POST",data:{action:"test_single",endpoint_id:endpoint.id},dataType:"json",timeout:15000,success:function(res){if(res.code===0&&res.data){resolve(res.data);}else{resolve({id:endpoint.id,name:endpoint.name,region:endpoint.region,ip:"-",country:"-",city:"-",isp:"-",status:"failed"});}},error:function(){resolve({id:endpoint.id,name:endpoint.name,region:endpoint.region,ip:"-",country:"-",city:"-",isp:"-",status:"failed"});}});
+});
+}
+
+function testSingleWan(index,wanInfo){
+return new Promise(function(resolve){
+updateProgress(index+1,wanTableData.length,wanInfo.name);
+$.ajax({url:"/cgi-bin/App/splitunnel/ajax_splitunnel",type:"POST",data:{action:"test_single_wan",wan_name:wanInfo.name},dataType:"json",timeout:20000,success:function(res){if(res.code===0&&res.data){resolve(res.data);}else{resolve({id:index+1,name:wanInfo.name,interface:wanInfo.interface,local_ip:wanInfo.ip,ip:"-",country:"-",city:"-",isp:"-",status:"failed"});}},error:function(){resolve({id:index+1,name:wanInfo.name,interface:wanInfo.interface,local_ip:wanInfo.ip,ip:"-",country:"-",city:"-",isp:"-",status:"failed"});}});
+});
+}
+
+function getWanList(){
+return new Promise(function(resolve){
+$.ajax({url:"/cgi-bin/App/splitunnel/ajax_splitunnel",type:"POST",data:{action:"get_wan_list"},dataType:"json",timeout:5000,success:function(res){if(res.code===0&&res.data){resolve(res.data);}else{resolve([]);}},error:function(){resolve([]);}});
+});
+}
+
+var serviceEndpoints=[{id:1,name:"ip-api.com",region:"USA"},{id:2,name:"ipinfo.io",region:"USA"},{id:3,name:"ifconfig.me",region:"Japan"},{id:4,name:"ip.sb",region:"Global"},{id:5,name:"ipify.org",region:"USA"},{id:6,name:"CF-1.1.1.1",region:"Global"},{id:7,name:"CF-API",region:"HK/US"},{id:8,name:"ipwho.is",region:"Global"}];
+
+function runTests(){
+var mode=$("#testMode").val();
+var btn=$("#btnTest");
+testRunning=true;
+btn.prop("disabled",true).addClass("layui-btn-disabled");
+btn.html('<i class="layui-icon layui-icon-loading layui-anim layui-anim-rotate layui-anim-loop"></i> Testing...');
+$("#ipInfo").html("");
+$("#progressInfo").show();
+wanTableData=[];
+serviceTableData=[];
+var wanList=[];
+var i=0;
+var j=0;
+
+function doWanTest(){
+if(mode!=="wan"&&mode!=="all"){$("#wanSection").hide();doServiceTest();return;}
+$("#wanSection").show();
+getWanList().then(function(list){
+wanList=list;
+if(wanList.length===0){doServiceTest();return;}
+wanTableData=wanList.map(function(w,idx){return{id:idx+1,name:w.name,interface:w.interface,local_ip:w.ip,ip:"-",country:"-",city:"-",isp:"-",status:"testing"};});
+table.reload("wanTable",{data:wanTableData});
+i=0;
+function testNextWan(){
+if(!testRunning||i>=wanList.length){doServiceTest();return;}
+testSingleWan(i,wanList[i]).then(function(result){
+if(testRunning){wanTableData[i]=result;table.reload("wanTable",{data:wanTableData});updateIPInfo();i++;testNextWan();}
+});
+}
+testNextWan();
+});
+}
+
+function doServiceTest(){
+if(mode!=="default"&&mode!=="all"){$("#serviceSection").hide();finishTest();return;}
+$("#serviceSection").show();
+serviceTableData=serviceEndpoints.map(function(ep){return{id:ep.id,name:ep.name,region:ep.region,ip:"-",country:"-",city:"-",isp:"-",status:"testing"};});
+table.reload("testTable",{data:serviceTableData});
+j=0;
+function testNextService(){
+if(!testRunning||j>=serviceEndpoints.length){finishTest();return;}
+testSingleEndpoint(j,serviceEndpoints[j]).then(function(result){
+if(testRunning){serviceTableData[j]=result;table.reload("testTable",{data:serviceTableData});updateIPInfo();j++;testNextService();}
+});
+}
+testNextService();
+}
+
+function finishTest(){
+testRunning=false;
+$("#progressInfo").hide();
+btn.prop("disabled",false).removeClass("layui-btn-disabled");
+btn.html('<i class="layui-icon layui-icon-play"></i> '+txtStart);
+}
+
+doWanTest();
+}
+
+$("#btnTest").on("click",function(){
+if(testRunning){testRunning=false;$("#progressInfo").hide();$("#btnTest").prop("disabled",false).removeClass("layui-btn-disabled").html('<i class="layui-icon layui-icon-play"></i> '+txtStart);return;}
+runTests();
+});
+
+$("#serviceSection").show();
 });
 </script>
